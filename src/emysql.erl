@@ -451,157 +451,36 @@ decrement_pool_size(PoolId, Num) when is_integer(Num) ->
 prepare(StmtName, Statement) when is_atom(StmtName) andalso ?is_query(Statement) ->
     emysql_statements:add(StmtName, Statement).
 
-%% @spec execute(PoolId, Query|StmtName) -> Result | [Result]
-%%      PoolId = atom()
-%%      Query = binary() | string()
-%%      StmtName = atom()
-%%      Result = ok_packet() | result_packet() | error_packet()
-%%
-%% @doc Execute a query, prepared statement or a stored procedure.
-%%
-%% Same as `execute(PoolId, Query, [], default_timeout())'.
-%%
-%% The result is a list for stored procedure execution >= MySQL 4.1
-%%
-%% @see execute/3.
-%% @see execute/4.
+%% @equiv execute(PoolId, T, [], default_timeout())
+execute(PoolId, T) ->
+    execute(PoolId, T, [], default_timeout()).
+
+%% @equiv execute(PoolId, T, Args, default_timeout()) or execute(PoolId, T, [], Timeout)
 %% @see execute/5.
-%% @see prepare/2.
-%% @end doc: hd feb 11
-%%
-execute(PoolId, Query) when ?is_query(Query) ->
-    execute(PoolId, Query, []);
+execute(PoolId, T, Args) when is_list(Args) ->
+    execute(PoolId, T, Args, default_timeout());
+execute(PoolId, T, Timeout) when ?is_timeout(Timeout) ->
+    execute(PoolId, T, [], Timeout).
 
-execute(PoolId, StmtName) when is_atom(StmtName) ->
-    execute(PoolId, StmtName, []).
-
-%% @spec execute(PoolId, Query|StmtName, Args|Timeout) -> Result | [Result]
-%%      PoolId = atom()
-%%      Query = binary() | string()
-%%      StmtName = atom()
-%%      Args = [any()]
-%%      Timeout = integer() | infinity
-%%      Result = ok_packet() | result_packet() | error_packet()
-%%
+-spec execute(PoolId, T, Args, Timeout) -> Result | [Result] when
+     PoolId :: atom(),
+     T :: binary() | string() | atom() | fun(),
+     Args :: [any()],
+     Timeout :: timeout(),
+     Result :: #ok_packet{} | #result_packet{} | #eof_packet{} | #error_packet{}.
 %% @doc Execute a query, prepared statement or a stored procedure.
-%%
-%% Same as `execute(PoolId, Query, Args, default_timeout())'
-%% or `execute(PoolId, Query, [], Timeout)'.
-%%
-%% Timeout is the query timeout in milliseconds or the atom infinity.
-%%
-%% The result is a list for stored procedure execution >= MySQL 4.1
-%%
-%% @see execute/2.
-%% @see execute/4.
-%% @see execute/5.
-%% @see prepare/2.
-%% @end doc: hd feb 11
-%%
-
-execute(PoolId, Query, Args) when ?is_query(Query) andalso is_list(Args) ->
-    execute(PoolId, Query, Args, default_timeout());
-execute(PoolId, StmtName, Args) when is_atom(StmtName), is_list(Args) ->
-    execute(PoolId, StmtName, Args, default_timeout());
-execute(PoolId, Query, Timeout) when ?is_query(Query) andalso ?is_timeout(Timeout) ->
-    execute(PoolId, Query, [], Timeout);
-execute(PoolId, StmtName, Timeout) when is_atom(StmtName), ?is_timeout(Timeout) ->
-    execute(PoolId, StmtName, [], Timeout).
-
-%% @spec execute(PoolId, Query|StmtName, Args, Timeout) -> Result | [Result]
-%%      PoolId = atom()
-%%      Query = binary() | string()
-%%      StmtName = atom()
-%%      Args = [any()]
-%%      Timeout = integer() | infinity
-%%      Result = ok_packet() | result_packet() | error_packet()
-%%
-%% @doc Execute a query, prepared statement or a stored procedure.
-%%
-%% <ll>
-%% <li>Opens a connection,</li>
-%% <li>sends the query string, or statement atom, and</li>
-%% <li>returns the result packet.</li>
-%% </ll>
-%%
-%% Basically:
-%% ```
-%% Connection = emysql_conn_mgr:wait_for_connection(PoolId),
-%% monitor_work(Connection, Timeout, {emysql_conn, execute, [Connection, Query_or_StmtName, Args]}).
-%% '''
-%% Timeout is the query timeout in milliseconds or the atom infinity.
-%%
-%% All other execute function eventually call this function.
-%%
-%% @see execute/2.
-%% @see execute/3.
-%% @see execute/5.
-%% @see prepare/2.
-%% @end doc: hd feb 11
-%%
-
-execute(PoolId, Query, Args, Timeout) when ?is_query(Query) andalso is_list(Args) andalso ?is_timeout(Timeout) ->
+execute(PoolId, T, Args, Timeout) ->
     %-% io:format("~p execute getting connection for pool id ~p~n",[self(), PoolId]),
     Connection = emysql_conn_mgr:wait_for_connection(PoolId),
     %-% io:format("~p execute got connection for pool id ~p: ~p~n",[self(), PoolId, Connection#emysql_connection.id]),
-    monitor_work(Connection, Timeout, [Connection, Query, Args]);
-execute(PoolId, StmtName, Args, Timeout)
-    when
-    is_atom(StmtName),
-    is_list(Args),
-    ?is_timeout(Timeout) ->
-    Connection = emysql_conn_mgr:wait_for_connection(PoolId),
-    monitor_work(Connection, Timeout, [Connection, StmtName, Args]).
+    monitor_work(Connection, Timeout, [Connection, T, Args]).
 
-%% @spec execute(PoolId, Query|StmtName, Args, Timeout, nonblocking) -> Result | [Result]
-%%      PoolId = atom()
-%%      Query = binary() | string()
-%%      StmtName = atom()
-%%      Args = [any()]
-%%      Timeout = integer() | infinity
-%%      Result = ok_packet() | result_packet() | error_packet()
-%%
-%% @doc Execute a query, prepared statement or a stored procedure - but return immediately, returning the atom 'unavailable', when no connection in the pool is readily available without wait.
-%%
-%% <ll>
-%% <li>Checks if a connection is available,</li>
-%% <li>returns 'unavailable' if not,</li>
-%% <li>else as the other exception functions(): sends the query string, or statement atom, and</li>
-%% <li>returns the result packet.</li>
-%% </ll>
-%%
-%% Timeout is the query timeout in milliseconds or the atom infinity.
-%%
-%% ==== Implementation ====
-%%
-%% Basically:
-%% ```
-%% {Connection, connection} = case emysql_conn_mgr:lock_connection(PoolId),
-%%      monitor_work(Connection, Timeout, {emysql_conn, execute, [Connection, Query_or_StmtName, Args]}).
-%% '''
-%%
-%% The result is a list for stored procedure execution >= MySQL 4.1
-%%
-%% All other execute function eventually call this function.
-%%
-%% @see execute/2.
-%% @see execute/3.
+%% @doc Same as execute/4, but return the atom 'unavailable' when no connection in the pool is readily available.
 %% @see execute/4.
-%% @see prepare/2.
-%% @end doc: hd feb 11
-%%
-execute(PoolId, Query, Args, Timeout, nonblocking) when ?is_query(Query) andalso is_list(Args) andalso ?is_timeout(Timeout) ->
+execute(PoolId, T, Args, Timeout, nonblocking) ->
     case emysql_conn_mgr:lock_connection(PoolId) of
         Connection when is_record(Connection, emysql_connection) ->
-            monitor_work(Connection, Timeout, [Connection, Query, Args]);
-        unavailable ->
-            unavailable
-    end;
-
-execute(PoolId, StmtName, Args, Timeout, nonblocking) when is_atom(StmtName), is_list(Args) andalso is_integer(Timeout) ->
-    case emysql_conn_mgr:lock_connection(PoolId) of
-        Connection when is_record(Connection, emysql_connection) ->
-            monitor_work(Connection, Timeout, [Connection, StmtName, Args]);
+            monitor_work(Connection, Timeout, [Connection, T, Args]);
         unavailable ->
             unavailable
     end.
@@ -690,36 +569,6 @@ as_record(Res, Recname, Fields) -> emysql_conv:as_record(Res, Recname, Fields).
 %%  Res:as_record(foo, record_info(fields, foo)).
 as_record(Res, Recname, Fields, Fun) -> emysql_conv:as_record(Res, Recname, Fields, Fun).
 
-%%--------------------------------------------------------------------
-%%% Internal functions
-%%--------------------------------------------------------------------
-%% @spec monitor_work(Connection, Timeout, {M, F, A}) -> Result | exit()
-%%      PoolId = atom()
-%%      Query = binary() | string()
-%%      StmtName = atom()
-%%      Args = [any()]
-
-%%      Timeout = timeout()
-%%      Result = ok_packet() | result_packet() | error_packet()
-%%
-%% @doc Execute a query, prepared statement or a stored procedure.
-%%
-%% Same as `execute(PoolId, Query, Args, default_timeout())'
-%% or `execute(PoolId, Query, [], Timeout)'.
-%%
-%% Timeout is the query timeout in milliseconds or the atom infinity.
-%%
-%% The result is a list for stored procedure execution >= MySQL 4.1
-%%
-%% @see execute/2.
-%% @see execute/3.
-%% @see execute/4.
-%% @see execute/5.
-%% @see prepare/2.
-%%
-%% @private
-%% @end doc: hd feb 11
-%%
 monitor_work(Connection0, Timeout, Args) when is_record(Connection0, emysql_connection) ->
     Connection = case emysql_conn:need_test_connection(Connection0) of
         true ->
@@ -794,3 +643,4 @@ config_ok(_BadOptions) ->
 encoding_ok(Enc) when is_atom(Enc) -> ok;
 encoding_ok({Enc, Coll}) when is_atom(Enc), is_atom(Coll) -> ok;
 encoding_ok(_) -> erlang:error(badarg).
+
