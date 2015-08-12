@@ -82,7 +82,7 @@
 %% The quintessential execute however is this, in execute/2:
 %% ```
 %%  execute(PoolId, Query, Args, Timeout)
-%%      when (is_list(Query) orelse is_binary(Query)) andalso is_list(Args) andalso is_integer(Timeout) ->
+%%      when ?is_query(Query) andalso is_list(Args) andalso is_integer(Timeout) ->
 %%
 %%          Connection =
 %%              emysql_conn_mgr:wait_for_connection(PoolId),
@@ -135,6 +135,7 @@
 
 % for record and constant defines
 -include("emysql.hrl").
+-include("emysql_internal.hrl").
 
 %% @spec start() -> ok
 %% @doc Start the Emysql application.
@@ -240,7 +241,7 @@ config_ok(#pool{pool_id = PoolId, size = Size, user = User, password = Password,
     is_integer(Port),
     is_list(Database) orelse Database == undefined,
     is_list(StartCmds),
-    is_integer(ConnectTimeout) orelse ConnectTimeout == infinity,
+    ?is_timeout(ConnectTimeout),
     is_boolean(Warnings) ->
     encoding_ok(Encoding);
 config_ok(_BadOptions) ->
@@ -473,7 +474,7 @@ decrement_pool_size(PoolId, Num) when is_integer(Num) ->
 %% @see emysql_conn:execute/3
 %% @end doc: hd feb 11
 
-prepare(StmtName, Statement) when is_atom(StmtName) andalso (is_list(Statement) orelse is_binary(Statement)) ->
+prepare(StmtName, Statement) when is_atom(StmtName) andalso ?is_query(Statement) ->
     emysql_statements:add(StmtName, Statement).
 
 %% @spec execute(PoolId, Query|StmtName) -> Result | [Result]
@@ -494,7 +495,7 @@ prepare(StmtName, Statement) when is_atom(StmtName) andalso (is_list(Statement) 
 %% @see prepare/2.
 %% @end doc: hd feb 11
 %%
-execute(PoolId, Query) when (is_list(Query) orelse is_binary(Query)) ->
+execute(PoolId, Query) when ?is_query(Query) ->
     execute(PoolId, Query, []);
 
 execute(PoolId, StmtName) when is_atom(StmtName) ->
@@ -524,13 +525,13 @@ execute(PoolId, StmtName) when is_atom(StmtName) ->
 %% @end doc: hd feb 11
 %%
 
-execute(PoolId, Query, Args) when (is_list(Query) orelse is_binary(Query)) andalso is_list(Args) ->
+execute(PoolId, Query, Args) when ?is_query(Query) andalso is_list(Args) ->
     execute(PoolId, Query, Args, default_timeout());
 execute(PoolId, StmtName, Args) when is_atom(StmtName), is_list(Args) ->
     execute(PoolId, StmtName, Args, default_timeout());
-execute(PoolId, Query, Timeout) when (is_list(Query) orelse is_binary(Query)) andalso (is_integer(Timeout) orelse Timeout == infinity) ->
+execute(PoolId, Query, Timeout) when ?is_query(Query) andalso ?is_timeout(Timeout) ->
     execute(PoolId, Query, [], Timeout);
-execute(PoolId, StmtName, Timeout) when is_atom(StmtName), (is_integer(Timeout) orelse Timeout == infinity) ->
+execute(PoolId, StmtName, Timeout) when is_atom(StmtName), ?is_timeout(Timeout) ->
     execute(PoolId, StmtName, [], Timeout).
 
 %% @spec execute(PoolId, Query|StmtName, Args, Timeout) -> Result | [Result]
@@ -565,7 +566,7 @@ execute(PoolId, StmtName, Timeout) when is_atom(StmtName), (is_integer(Timeout) 
 %% @end doc: hd feb 11
 %%
 
-execute(PoolId, Query, Args, Timeout) when (is_list(Query) orelse is_binary(Query)) andalso is_list(Args) andalso (is_integer(Timeout) orelse Timeout == infinity) ->
+execute(PoolId, Query, Args, Timeout) when ?is_query(Query) andalso is_list(Args) andalso ?is_timeout(Timeout) ->
     %-% io:format("~p execute getting connection for pool id ~p~n",[self(), PoolId]),
     Connection = emysql_conn_mgr:wait_for_connection(PoolId),
     %-% io:format("~p execute got connection for pool id ~p: ~p~n",[self(), PoolId, Connection#emysql_connection.id]),
@@ -574,7 +575,7 @@ execute(PoolId, StmtName, Args, Timeout)
     when
     is_atom(StmtName),
     is_list(Args),
-    is_integer(Timeout) orelse Timeout == infinity ->
+    ?is_timeout(Timeout) ->
     Connection = emysql_conn_mgr:wait_for_connection(PoolId),
     monitor_work(Connection, Timeout, [Connection, StmtName, Args]).
 
@@ -615,7 +616,7 @@ execute(PoolId, StmtName, Args, Timeout)
 %% @see prepare/2.
 %% @end doc: hd feb 11
 %%
-execute(PoolId, Query, Args, Timeout, nonblocking) when (is_list(Query) orelse is_binary(Query)) andalso is_list(Args) andalso (is_integer(Timeout) orelse Timeout == infinity) ->
+execute(PoolId, Query, Args, Timeout, nonblocking) when ?is_query(Query) andalso is_list(Args) andalso ?is_timeout(Timeout) ->
     case emysql_conn_mgr:lock_connection(PoolId) of
         Connection when is_record(Connection, emysql_connection) ->
             monitor_work(Connection, Timeout, [Connection, Query, Args]);
@@ -724,7 +725,7 @@ as_record(Res, Recname, Fields, Fun) -> emysql_conv:as_record(Res, Recname, Fiel
 %%      StmtName = atom()
 %%      Args = [any()]
 
-%%      Timeout = integer() | infinity
+%%      Timeout = timeout()
 %%      Result = ok_packet() | result_packet() | error_packet()
 %%
 %% @doc Execute a query, prepared statement or a stored procedure.

@@ -35,6 +35,7 @@
 ]).
 
 -include("emysql.hrl").
+-include("emysql_internal.hrl").
 
 %% MYSQL COMMANDS
 -define(COM_SLEEP, 16#00).
@@ -95,7 +96,7 @@ execute(Connection, Query, []) ->
     QB = canonicalize_query(Query),
     Packet = <<?COM_QUERY, QB/binary>>,
     send_recv(Connection, Packet);
-execute(Connection, Query, Args) when (is_list(Query) orelse is_binary(Query)) andalso is_list(Args) ->
+execute(Connection, Query, Args) when ?is_query(Query) andalso is_list(Args) ->
     StmtName = "stmt_" ++ integer_to_list(erlang:phash2(Query)),
     ok = prepare(Connection, StmtName, Query),
     Ret =
