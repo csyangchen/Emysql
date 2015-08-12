@@ -88,7 +88,9 @@ execute(Connection, StmtName, []) when is_atom(StmtName) ->
     StmtNameBin = atom_to_binary(StmtName, utf8),
     Packet = [?COM_QUERY, "EXECUTE ", StmtNameBin],
     send_recv(Connection, Packet);
-execute(Connection, Query, []) ->
+execute(Connection, Fun, Args) when is_function(Fun), is_list(Args) ->
+    erlang:apply(Fun, [Connection | Args]);
+execute(Connection, Query, []) when ?is_query(Query) ->
     Packet = [?COM_QUERY, Query],
     send_recv(Connection, Packet);
 execute(Connection, Query, Args) when ?is_query(Query) andalso is_list(Args) ->

@@ -111,6 +111,7 @@
 -export([
     prepare/2,
     execute/2, execute/3, execute/4, execute/5,
+    execute_conn/2, execute_conn/3,
     default_timeout/0
 ]).
 
@@ -484,6 +485,15 @@ execute(PoolId, T, Args, Timeout, nonblocking) ->
         unavailable ->
             unavailable
     end.
+
+%% @equiv execute_conn(Connection, T, [])
+execute_conn(Connection, T) when is_record(Connection, emysql_connection) ->
+    emysql_conn:execute(Connection, T, []).
+
+%% @doc
+execute_conn(Connection, T, Args) when is_record(Connection, emysql_connection) ->
+    emysql_conn:execute(Connection, T, Args).
+
 
 %% @doc Return the field names of a result packet
 %% @end
