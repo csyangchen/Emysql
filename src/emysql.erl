@@ -211,6 +211,10 @@ default_timeout() ->
 %%
 %% @doc Synchronous call to the connection manager to add a pool.
 %%
+%% Creates a pool record, opens n=Size connections and calls
+%% emysql_conn_mgr:add_pool() to make the pool known to the pool management.
+%% emysql_conn_mgr:add_pool() is translated into a blocking gen-server call.
+%%
 %% Options:
 %%
 %% size - pool size (defaults to 1)
@@ -224,36 +228,6 @@ default_timeout() ->
 %% connect_timeout - millisecond timeout for connect or infinity (default)
 %% warnings - whether to fetch and log MySQL warnings automatically (defaults to false)
 %%
-%% === Implementation ===
-%%
-
-% Checks whether a configuration is superficially valid. It checks types and such,
-% it does not check existance of the database or correctness of passwords (that
-% happens when we try to connect to the database.
-config_ok(#pool{pool_id = PoolId, size = Size, user = User, password = Password, host = Host, port = Port,
-    database = Database, encoding = Encoding, start_cmds = StartCmds,
-    connect_timeout = ConnectTimeout, warnings = Warnings})
-    when is_atom(PoolId),
-    is_integer(Size),
-    is_list(User),
-    is_list(Password),
-    is_list(Host),
-    is_integer(Port),
-    is_list(Database) orelse Database == undefined,
-    is_list(StartCmds),
-    ?is_timeout(ConnectTimeout),
-    is_boolean(Warnings) ->
-    encoding_ok(Encoding);
-config_ok(_BadOptions) ->
-    erlang:error(badarg).
-
-encoding_ok(Enc) when is_atom(Enc) -> ok;
-encoding_ok({Enc, Coll}) when is_atom(Enc), is_atom(Coll) -> ok;
-encoding_ok(_) -> erlang:error(badarg).
-
-%% Creates a pool record, opens n=Size connections and calls
-%% emysql_conn_mgr:add_pool() to make the pool known to the pool management.
-%% emysql_conn_mgr:add_pool() is translated into a blocking gen-server call.
 
 add_pool(PoolId, Options) when is_list(Options) ->
     Size = proplists:get_value(size, Options, 5),
@@ -796,3 +770,27 @@ monitor_work(Connection0, Timeout, Args) when is_record(Connection0, emysql_conn
         emysql_conn:reset_connection(emysql_conn_mgr:pools(), Connection, pass),
         exit(mysql_timeout)
     end.
+
+% Checks whether a configuration is superficially valid. It checks types and such,
+% it does not check existance of the database or correctness of passwords (that
+% happens when we try to connect to the database.
+config_ok(#pool{pool_id = PoolId, size = Size, user = User, password = Password, host = Host, port = Port,
+    database = Database, encoding = Encoding, start_cmds = StartCmds,
+    connect_timeout = ConnectTimeout, warnings = Warnings})
+    when is_atom(PoolId),
+    is_integer(Size),
+    is_list(User),
+    is_list(Password),
+    is_list(Host),
+    is_integer(Port),
+    is_list(Database) orelse Database == undefined,
+    is_list(StartCmds),
+    ?is_timeout(ConnectTimeout),
+    is_boolean(Warnings) ->
+    encoding_ok(Encoding);
+config_ok(_BadOptions) ->
+    erlang:error(badarg).
+
+encoding_ok(Enc) when is_atom(Enc) -> ok;
+encoding_ok({Enc, Coll}) when is_atom(Enc), is_atom(Coll) -> ok;
+encoding_ok(_) -> erlang:error(badarg).

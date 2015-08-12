@@ -1,3 +1,5 @@
+%% @private
+
 -module(emysql_worker).
 -export([behaviour_info/1]).
 

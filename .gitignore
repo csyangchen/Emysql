@@ -11,7 +11,7 @@ samples/*.beam
 *.dump
 priv/*.config
 *~
-# /doc
+/doc
 .DS_Store
 *.orig
 *.rej

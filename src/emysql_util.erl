@@ -25,6 +25,8 @@
 %% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 %% OTHER DEALINGS IN THE SOFTWARE.
 %% @deprecated Please use the functions in {@link emysql} instead.
+%% @private
+
 -module(emysql_util).
 
 %% Query data
