@@ -71,30 +71,25 @@
 set_database(_, undefined) -> ok;
 set_database(_, Empty) when Empty == ""; Empty == <<>> -> ok;
 set_database(Connection, Database) ->
-    Packet = <<?COM_QUERY, "use `", (iolist_to_binary(Database))/binary, "`">>,  % todo: utf8?
+    Packet = [?COM_QUERY, "USE `", Database, "`"],  % todo: utf8?
     emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0).
 
 set_encoding(_, undefined) -> ok;
 set_encoding(Connection, {Encoding, Collation}) ->
-    Packet = <<?COM_QUERY, "set names '", (erlang:atom_to_binary(Encoding, utf8))/binary,
-    "' collate '", (erlang:atom_to_binary(Collation, utf8))/binary, "'">>,
+    Packet = [?COM_QUERY, "SET NAMES '", erlang:atom_to_binary(Encoding, utf8),
+    "' COLLATE '", erlang:atom_to_binary(Collation, utf8), "'"],
     emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0);
 set_encoding(Connection, Encoding) ->
-    Packet = <<?COM_QUERY, "set names '", (erlang:atom_to_binary(Encoding, utf8))/binary, "'">>,
+    Packet = [?COM_QUERY, "SET NAMES '", erlang:atom_to_binary(Encoding, utf8), "'"],
     emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0).
-
-%% @todo This can go away once the underlying socket accepts IOData
-canonicalize_query(Q) when is_binary(Q) -> Q;
-canonicalize_query(QL) when is_list(QL) -> iolist_to_binary(QL).
 
 execute(Connection, StmtName, []) when is_atom(StmtName) ->
     prepare_statement(Connection, StmtName),
     StmtNameBin = atom_to_binary(StmtName, utf8),
-    Packet = <<?COM_QUERY, "EXECUTE ", StmtNameBin/binary>>,
+    Packet = [?COM_QUERY, "EXECUTE ", StmtNameBin],
     send_recv(Connection, Packet);
 execute(Connection, Query, []) ->
-    QB = canonicalize_query(Query),
-    Packet = <<?COM_QUERY, QB/binary>>,
+    Packet = [?COM_QUERY, Query],
     send_recv(Connection, Packet);
 execute(Connection, Query, Args) when ?is_query(Query) andalso is_list(Args) ->
     StmtName = "stmt_" ++ integer_to_list(erlang:phash2(Query)),
@@ -102,8 +97,8 @@ execute(Connection, Query, Args) when ?is_query(Query) andalso is_list(Args) ->
     Ret =
         case set_params(Connection, 1, Args, undefined) of
             OK when is_record(OK, ok_packet) ->
-                ParamNamesBin = list_to_binary(string:join([[$@ | integer_to_list(I)] || I <- lists:seq(1, length(Args))], ", ")),  % todo: utf8?
-                Packet = <<?COM_QUERY, "EXECUTE ", (list_to_binary(StmtName))/binary, " USING ", ParamNamesBin/binary>>,  % todo: utf8?
+                ParamNamesBin = join([[$@ | integer_to_list(I)] || I <- lists:seq(1, length(Args))], ", "),  % todo: utf8?
+                Packet = [?COM_QUERY, "EXECUTE ", StmtName, " USING ", ParamNamesBin],  % todo: utf8?
                 send_recv(Connection, Packet);
             Error ->
                 Error
@@ -115,9 +110,9 @@ execute(Connection, StmtName, Args) when is_atom(StmtName), is_list(Args) ->
     prepare_statement(Connection, StmtName),
     case set_params(Connection, 1, Args, undefined) of
         OK when is_record(OK, ok_packet) ->
-            ParamNamesBin = list_to_binary(string:join([[$@ | integer_to_list(I)] || I <- lists:seq(1, length(Args))], ", ")),  % todo: utf8?
+            ParamNamesBin = join([[$@ | integer_to_list(I)] || I <- lists:seq(1, length(Args))], ", "),  % todo: utf8?
             StmtNameBin = atom_to_binary(StmtName, utf8),
-            Packet = <<?COM_QUERY, "EXECUTE ", StmtNameBin/binary, " USING ", ParamNamesBin/binary>>,
+            Packet = [?COM_QUERY, "EXECUTE ", StmtNameBin, " USING ", ParamNamesBin],
             send_recv(Connection, Packet);
         Error ->
             Error
@@ -127,7 +122,7 @@ prepare(Connection, Name, Statement) when is_atom(Name) ->
     prepare(Connection, atom_to_list(Name), Statement);
 prepare(Connection, Name, Statement) ->
     StatementBin = encode(Statement, binary),
-    Packet = <<?COM_QUERY, "PREPARE ", (list_to_binary(Name))/binary, " FROM ", StatementBin/binary>>,  % todo: utf8?
+    Packet = [?COM_QUERY, "PREPARE ", Name, " FROM ", StatementBin],  % todo: utf8?
     case send_recv(Connection, Packet) of
         OK when is_record(OK, ok_packet) ->
             ok;
@@ -138,7 +133,7 @@ prepare(Connection, Name, Statement) ->
 unprepare(Connection, Name) when is_atom(Name) ->
     unprepare(Connection, atom_to_list(Name));
 unprepare(Connection, Name) ->
-    Packet = <<?COM_QUERY, "DEALLOCATE PREPARE ", (list_to_binary(Name))/binary>>,  % todo: utf8?
+    Packet = [?COM_QUERY, "DEALLOCATE PREPARE ", Name],  % todo: utf8?
     send_recv(Connection, Packet).
 
 open_n_connections(PoolId, N) ->
@@ -250,7 +245,7 @@ set_database_or_die(#emysql_connection{socket = Socket} = Connection, Database) 
 run_startcmds_or_die(#emysql_connection{socket = Socket}, StartCmds) ->
     lists:foreach(
         fun(Cmd) ->
-            Packet = <<?COM_QUERY, Cmd/binary>>,
+            Packet = [?COM_QUERY, Cmd],
             case emysql_tcp:send_and_recv_packet(Socket, Packet, 0) of
                 OK when OK =:= ok orelse is_record(OK, ok_packet) ->
                     ok;
@@ -351,7 +346,7 @@ send_recv(#emysql_connection{socket = Socket, warnings = Warnings}, Packet) ->
 log_warnings(Socket, #ok_packet{warning_count = WarningCount}) when WarningCount > 0 ->
     %% Fetch the warnings and log them in the OTP way.
     #result_packet{rows = WarningRows} =
-        emysql_tcp:send_and_recv_packet(Socket, <<?COM_QUERY, "SHOW WARNINGS">>, 0),
+        emysql_tcp:send_and_recv_packet(Socket, [?COM_QUERY, "SHOW WARNINGS"], 0),
     WarningMessages = [Message || [_Level, _Code, Message] <- WarningRows],
     error_logger:warning_report({emysql_warnings, WarningMessages});
 log_warnings(_Sock, _OtherPacket) ->
@@ -366,9 +361,9 @@ set_params_packet(NumStart, Values) ->
     BinValues = [encode(Val, binary) || Val <- Values],
     BinNums = [encode(Num, binary) || Num <- lists:seq(NumStart, NumStart + length(Values) - 1)],
     BinPairs = lists:zip(BinNums, BinValues),
-    Parts = [<<"@", NumBin/binary, "=", ValBin/binary>> || {NumBin, ValBin} <- BinPairs],
-    Sets = list_to_binary(join(Parts, <<",">>)),
-    <<?COM_QUERY, "SET ", Sets/binary>>.
+    Parts = [["@", NumBin, "=", ValBin] || {NumBin, ValBin} <- BinPairs],
+    Sets = join(Parts, ","),
+    [?COM_QUERY, "SET ", Sets].
 
 %% @doc Join elements of list with Sep
 %%

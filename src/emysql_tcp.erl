@@ -35,7 +35,7 @@
 
 -spec send_and_recv_packet(port(), iodata(), integer()) -> packet_result() | [packet_result()].
 send_and_recv_packet(Sock, Packet, SeqNum) ->
-    case gen_tcp:send(Sock, [<<(size(Packet)):24/little, SeqNum:8>>, Packet]) of
+    case gen_tcp:send(Sock, [<<(iolist_size(Packet)):24/little, SeqNum:8>>, Packet]) of
         ok -> ok;
         {error, closed} ->
             %% If we can't communicate on the socket since it has been closed, we exit the process
