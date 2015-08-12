@@ -27,11 +27,11 @@
 %% @private
 -module(emysql_conn).
 -export([set_database/2, set_encoding/2,
-        execute/3, prepare/3, unprepare/2,
-        open_connections/1, open_connection/1,
-        reset_connection/3, close_connection/1,
-        open_n_connections/2, hstate/1,
-        test_connection/2, need_test_connection/1
+    execute/3, prepare/3, unprepare/2,
+    open_connections/1, open_connection/1,
+    reset_connection/3, close_connection/1,
+    open_n_connections/2, hstate/1,
+    test_connection/2, need_test_connection/1
 ]).
 
 -include("emysql.hrl").
@@ -75,8 +75,8 @@ set_database(Connection, Database) ->
 
 set_encoding(_, undefined) -> ok;
 set_encoding(Connection, {Encoding, Collation}) ->
-    Packet = <<?COM_QUERY, "set names '", (erlang:atom_to_binary(Encoding, utf8))/binary, 
-        "' collate '", (erlang:atom_to_binary(Collation, utf8))/binary,"'">>,
+    Packet = <<?COM_QUERY, "set names '", (erlang:atom_to_binary(Encoding, utf8))/binary,
+    "' collate '", (erlang:atom_to_binary(Collation, utf8))/binary, "'">>,
     emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0);
 set_encoding(Connection, Encoding) ->
     Packet = <<?COM_QUERY, "set names '", (erlang:atom_to_binary(Encoding, utf8))/binary, "'">>,
@@ -96,17 +96,17 @@ execute(Connection, Query, []) ->
     Packet = <<?COM_QUERY, QB/binary>>,
     send_recv(Connection, Packet);
 execute(Connection, Query, Args) when (is_list(Query) orelse is_binary(Query)) andalso is_list(Args) ->
-    StmtName = "stmt_"++integer_to_list(erlang:phash2(Query)),
+    StmtName = "stmt_" ++ integer_to_list(erlang:phash2(Query)),
     ok = prepare(Connection, StmtName, Query),
     Ret =
-    case set_params(Connection, 1, Args, undefined) of
-        OK when is_record(OK, ok_packet) ->
-            ParamNamesBin = list_to_binary(string:join([[$@ | integer_to_list(I)] || I <- lists:seq(1, length(Args))], ", ")),  % todo: utf8?
-            Packet = <<?COM_QUERY, "EXECUTE ", (list_to_binary(StmtName))/binary, " USING ", ParamNamesBin/binary>>,  % todo: utf8?
-            send_recv(Connection, Packet);
-        Error ->
-            Error
-    end,
+        case set_params(Connection, 1, Args, undefined) of
+            OK when is_record(OK, ok_packet) ->
+                ParamNamesBin = list_to_binary(string:join([[$@ | integer_to_list(I)] || I <- lists:seq(1, length(Args))], ", ")),  % todo: utf8?
+                Packet = <<?COM_QUERY, "EXECUTE ", (list_to_binary(StmtName))/binary, " USING ", ParamNamesBin/binary>>,  % todo: utf8?
+                send_recv(Connection, Packet);
+            Error ->
+                Error
+        end,
     unprepare(Connection, StmtName),
     Ret;
 
@@ -134,7 +134,7 @@ prepare(Connection, Name, Statement) ->
             exit({failed_to_prepare_statement, Err#error_packet.msg})
     end.
 
-unprepare(Connection, Name) when is_atom(Name)->
+unprepare(Connection, Name) when is_atom(Name) ->
     unprepare(Connection, atom_to_list(Name));
 unprepare(Connection, Name) ->
     Packet = <<?COM_QUERY, "DEALLOCATE PREPARE ", (list_to_binary(Name))/binary>>,  % todo: utf8?
@@ -164,7 +164,7 @@ open_n_connections(PoolId, N) ->
 %% Does not remove pool from emysql_conn_mgr due to a possible deadlock.
 %% Caller must do it by itself.
 open_connections(Pool) ->
-     %-% io:format("open connections loop: .. "),
+    %-% io:format("open connections loop: .. "),
     case (queue:len(Pool#pool.available) + gb_trees:size(Pool#pool.locked)) < Pool#pool.size of
         true ->
             case catch open_connection(Pool) of
@@ -177,37 +177,37 @@ open_connections(Pool) ->
                     ),
                     lists:foreach(fun emysql_conn:close_connection/1, AllConns),
                     {error, Reason}
-			end;
+            end;
         false ->
             {ok, Pool}
     end.
 
-open_connection(#pool{pool_id=PoolId, host=Host, port=Port, user=User,
-        password=Password, database=Database, encoding=Encoding,
-                      start_cmds=StartCmds, connect_timeout=ConnectTimeout} = Pool) ->
-     %-% io:format("~p open connection for pool ~p host ~p port ~p user ~p base ~p~n", [self(), PoolId, Host, Port, User, Database]),
-     %-% io:format("~p open connection: ... connect ... ~n", [self()]),
+open_connection(#pool{pool_id = PoolId, host = Host, port = Port, user = User,
+    password = Password, database = Database, encoding = Encoding,
+    start_cmds = StartCmds, connect_timeout = ConnectTimeout} = Pool) ->
+    %-% io:format("~p open connection for pool ~p host ~p port ~p user ~p base ~p~n", [self(), PoolId, Host, Port, User, Database]),
+    %-% io:format("~p open connection: ... connect ... ~n", [self()]),
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}, {recbuf, ?TCP_RECV_BUFFER}], ConnectTimeout) of
         {ok, Sock} ->
-            #greeting {
-               server_version = Version,
-               thread_id = ThreadId,
-               caps = Caps,
-               language = Language
-              } = handshake(Sock, User, Password),
+            #greeting{
+                server_version = Version,
+                thread_id = ThreadId,
+                caps = Caps,
+                language = Language
+            } = handshake(Sock, User, Password),
             Connection = #emysql_connection{
-                            id = erlang:port_to_list(Sock),
-                            pool_id = PoolId,
-                            encoding = Encoding,
-                            socket = Sock,
-                            version = Version,
-                            thread_id = ThreadId,
-                            caps = Caps,
-                            language = Language,
-                            test_period = Pool#pool.conn_test_period,
-                            last_test_time = now_seconds(),
-                            warnings = Pool#pool.warnings
-                           },
+                id = erlang:port_to_list(Sock),
+                pool_id = PoolId,
+                encoding = Encoding,
+                socket = Sock,
+                version = Version,
+                thread_id = ThreadId,
+                caps = Caps,
+                language = Language,
+                test_period = Pool#pool.conn_test_period,
+                last_test_time = now_seconds(),
+                warnings = Pool#pool.warnings
+            },
             %%-% io:format("~p open connection: ... set db ...~n", [self()]),
             ok = set_database_or_die(Connection, Database),
             ok = set_encoding_or_die(Connection, Encoding),
@@ -215,53 +215,53 @@ open_connection(#pool{pool_id=PoolId, host=Host, port=Port, user=User,
             ok = give_manager_control(Sock),
             Connection;
         {error, Reason} ->
-             %-% io:format("~p open connection: ... ERROR ~p~n", [self(), Reason]),
-             %-% io:format("~p open connection: ... exit with failed_to_connect_to_database~n", [self()]),
+            %-% io:format("~p open connection: ... ERROR ~p~n", [self(), Reason]),
+            %-% io:format("~p open connection: ... exit with failed_to_connect_to_database~n", [self()]),
             exit({failed_to_connect_to_database, Reason})
     end.
 
 handshake(Sock, User, Password) ->
-   case emysql_auth:handshake(Sock, User, Password) of
-       {ok, #greeting{} = G} -> G;
-       {error, Reason} ->
-           gen_tcp:close(Sock),
-           exit(Reason)
-   end.
+    case emysql_auth:handshake(Sock, User, Password) of
+        {ok, #greeting{} = G} -> G;
+        {error, Reason} ->
+            gen_tcp:close(Sock),
+            exit(Reason)
+    end.
 
 give_manager_control(Socket) ->
     case emysql_conn_mgr:give_manager_control(Socket) of
         {error, Reason} ->
             gen_tcp:close(Socket),
             exit({Reason,
-                 "Failed to find conn mgr when opening connection. Make sure crypto is started and emysql.app is in the Erlang path."});
+                "Failed to find conn mgr when opening connection. Make sure crypto is started and emysql.app is in the Erlang path."});
         ok -> ok
-   end.
+    end.
 
-set_database_or_die(#emysql_connection { socket = Socket } = Connection, Database) ->
+set_database_or_die(#emysql_connection{socket = Socket} = Connection, Database) ->
     case set_database(Connection, Database) of
         ok -> ok;
         OK1 when is_record(OK1, ok_packet) -> ok;
         Err1 when is_record(Err1, error_packet) ->
-             gen_tcp:close(Socket),
-             exit({failed_to_set_database, Err1#error_packet.msg})
+            gen_tcp:close(Socket),
+            exit({failed_to_set_database, Err1#error_packet.msg})
     end.
 
-run_startcmds_or_die(#emysql_connection{socket=Socket}, StartCmds) ->
+run_startcmds_or_die(#emysql_connection{socket = Socket}, StartCmds) ->
     lists:foreach(
         fun(Cmd) ->
-                Packet = <<?COM_QUERY, Cmd/binary>>,
-                case emysql_tcp:send_and_recv_packet(Socket, Packet, 0) of
-                    OK when OK =:= ok orelse is_record(OK, ok_packet) ->
-                        ok;
-                    #error_packet{msg=Msg} ->
-                        gen_tcp:close(Socket),
-                        exit({failed_to_run_cmd, Msg})
-                end
+            Packet = <<?COM_QUERY, Cmd/binary>>,
+            case emysql_tcp:send_and_recv_packet(Socket, Packet, 0) of
+                OK when OK =:= ok orelse is_record(OK, ok_packet) ->
+                    ok;
+                #error_packet{msg = Msg} ->
+                    gen_tcp:close(Socket),
+                    exit({failed_to_run_cmd, Msg})
+            end
         end,
         StartCmds
     ).
- 
-set_encoding_or_die(#emysql_connection { socket = Socket } = Connection, Encoding) ->
+
+set_encoding_or_die(#emysql_connection{socket = Socket} = Connection, Encoding) ->
     case set_encoding(Connection, Encoding) of
         ok -> ok;
         OK2 when is_record(OK2, ok_packet) -> ok;
@@ -269,7 +269,7 @@ set_encoding_or_die(#emysql_connection { socket = Socket } = Connection, Encodin
             gen_tcp:close(Socket),
             exit({failed_to_set_encoding, Err2#error_packet.msg})
     end.
- 
+
 reset_connection(Pools, Conn, StayLocked) ->
     %% if a process dies or times out while doing work
     %% the socket must be closed and the connection reset
@@ -294,7 +294,7 @@ reset_connection(Pools, Conn, StayLocked) ->
                     ok = emysql_conn_mgr:replace_connection_as_locked(Conn, NewConn2),
                     NewConn2;
                 {'EXIT', Reason} ->
-                    DeadConn = Conn#emysql_connection { alive = false, last_test_time = 0 },
+                    DeadConn = Conn#emysql_connection{alive = false, last_test_time = 0},
                     emysql_conn_mgr:replace_connection_as_available(Conn, DeadConn),
                     {error, {cannot_reopen_in_reset, Reason}}
             end;
@@ -306,36 +306,36 @@ add_monitor_ref(Conn, MonitorRef) ->
     Conn#emysql_connection{monitor_ref = MonitorRef}.
 
 close_connection(Conn) ->
-	%% garbage collect statements
-	emysql_statements:remove(Conn#emysql_connection.id),
-	ok = gen_tcp:close(Conn#emysql_connection.socket).
+    %% garbage collect statements
+    emysql_statements:remove(Conn#emysql_connection.id),
+    ok = gen_tcp:close(Conn#emysql_connection.socket).
 
 test_connection(Conn, StayLocked) ->
-  case catch emysql_tcp:send_and_recv_packet(Conn#emysql_connection.socket, <<?COM_PING>>, 0) of
-    {'EXIT', _} ->
-      case reset_connection(emysql_conn_mgr:pools(), Conn, StayLocked) of
-        NewConn when is_record(NewConn, emysql_connection) ->
-          NewConn;
-        {error, FailedReset} ->
-          exit({connection_down, {and_conn_reset_failed, FailedReset}})
-      end;
-    _ ->
-       NewConn = Conn#emysql_connection{last_test_time = now_seconds()},
-       case StayLocked of
-         pass -> emysql_conn_mgr:replace_connection_as_available(Conn, NewConn);
-         keep -> emysql_conn_mgr:replace_connection_as_locked(Conn, NewConn)
-       end,
-       NewConn
-  end.
+    case catch emysql_tcp:send_and_recv_packet(Conn#emysql_connection.socket, <<?COM_PING>>, 0) of
+        {'EXIT', _} ->
+            case reset_connection(emysql_conn_mgr:pools(), Conn, StayLocked) of
+                NewConn when is_record(NewConn, emysql_connection) ->
+                    NewConn;
+                {error, FailedReset} ->
+                    exit({connection_down, {and_conn_reset_failed, FailedReset}})
+            end;
+        _ ->
+            NewConn = Conn#emysql_connection{last_test_time = now_seconds()},
+            case StayLocked of
+                pass -> emysql_conn_mgr:replace_connection_as_available(Conn, NewConn);
+                keep -> emysql_conn_mgr:replace_connection_as_locked(Conn, NewConn)
+            end,
+            NewConn
+    end.
 
 need_test_connection(Conn) ->
-   (Conn#emysql_connection.test_period =:= 0) orelse
-     (Conn#emysql_connection.last_test_time =:= 0) orelse
-     (Conn#emysql_connection.last_test_time + Conn#emysql_connection.test_period < now_seconds()).
+    (Conn#emysql_connection.test_period =:= 0) orelse
+        (Conn#emysql_connection.last_test_time =:= 0) orelse
+        (Conn#emysql_connection.last_test_time + Conn#emysql_connection.test_period < now_seconds()).
 
 now_seconds() ->
-   {M, S, _} = erlang:now(),
-   M * 1000000 + S.
+    {M, S, _} = erlang:now(),
+    M * 1000000 + S.
 
 %%--------------------------------------------------------------------
 %%% Internal functions
@@ -358,16 +358,16 @@ log_warnings(_Sock, _OtherPacket) ->
 
 set_params(_, _, [], Result) -> Result;
 set_params(Connection, Num, Values, _) ->
-	Packet = set_params_packet(Num, Values),
-	emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0).
+    Packet = set_params_packet(Num, Values),
+    emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0).
 
 set_params_packet(NumStart, Values) ->
-	BinValues = [encode(Val, binary) || Val <- Values],
-	BinNums = [encode(Num, binary) || Num <- lists:seq(NumStart, NumStart + length(Values) - 1)],
-	BinPairs = lists:zip(BinNums, BinValues),
-	Parts = [<<"@", NumBin/binary, "=", ValBin/binary>> || {NumBin, ValBin} <- BinPairs], 
-	Sets = list_to_binary(join(Parts, <<",">>)),
-	<<?COM_QUERY, "SET ", Sets/binary>>.
+    BinValues = [encode(Val, binary) || Val <- Values],
+    BinNums = [encode(Num, binary) || Num <- lists:seq(NumStart, NumStart + length(Values) - 1)],
+    BinPairs = lists:zip(BinNums, BinValues),
+    Parts = [<<"@", NumBin/binary, "=", ValBin/binary>> || {NumBin, ValBin} <- BinPairs],
+    Sets = list_to_binary(join(Parts, <<",">>)),
+    <<?COM_QUERY, "SET ", Sets/binary>>.
 
 %% @doc Join elements of list with Sep
 %%
@@ -377,8 +377,8 @@ set_params_packet(NumStart, Values) ->
 join([], _Sep) -> [];
 join(L, Sep) -> join(L, Sep, []).
 
-join([H], _Sep, Acc)  -> lists:reverse([H|Acc]);
-join([H|T], Sep, Acc) -> join(T, Sep, [Sep, H|Acc]).
+join([H], _Sep, Acc) -> lists:reverse([H | Acc]);
+join([H | T], Sep, Acc) -> join(T, Sep, [Sep, H | Acc]).
 
 prepare_statement(Connection, StmtName) ->
     case emysql_statements:fetch(StmtName) of
@@ -397,9 +397,9 @@ prepare_statement(Connection, StmtName) ->
 % human readable string rep of the server state flag
 %% @private
 hstate(State) ->
-       case (State band ?SERVER_STATUS_AUTOCOMMIT)   of 0 -> ""; _-> "AUTOCOMMIT " end
-    ++ case (State band ?SERVER_MORE_RESULTS_EXIST)  of 0 -> ""; _-> "MORE_RESULTS_EXIST " end
-    ++ case (State band ?SERVER_QUERY_NO_INDEX_USED) of 0 -> ""; _-> "NO_INDEX_USED " end.
+    case (State band ?SERVER_STATUS_AUTOCOMMIT) of 0 -> ""; _ -> "AUTOCOMMIT " end
+        ++ case (State band ?SERVER_MORE_RESULTS_EXIST) of 0 -> ""; _ -> "MORE_RESULTS_EXIST " end
+        ++ case (State band ?SERVER_QUERY_NO_INDEX_USED) of 0 -> ""; _ -> "NO_INDEX_USED " end.
 
 %% @doc Encode a value so that it can be included safely in a MySQL query.
 %% @spec encode(term(), list | binary) -> string() | binary() | {error, Error}
@@ -407,9 +407,9 @@ encode(null, list) ->
     "null";
 encode(undefined, list) ->
     "null";
-encode(null, binary)  ->
+encode(null, binary) ->
     <<"null">>;
-encode(undefined, binary)  ->
+encode(undefined, binary) ->
     <<"null">>;
 encode(Val, list) when is_binary(Val) ->
     quote(binary_to_list(Val));
@@ -438,18 +438,18 @@ encode({time, Val}, ReturnType) ->
     encode(Val, ReturnType);
 encode({{Year, Month, Day}, {Hour, Minute, Second}}, list) ->
     Res = io_lib:format("'~4.4.0w-~2.2.0w-~2.2.0w ~2.2.0w:~2.2.0w:~2.2.0w'",
-                        [Year, Month, Day, Hour, Minute, Second]),
+        [Year, Month, Day, Hour, Minute, Second]),
     lists:flatten(Res);
-encode({{_Year, _Month, _Day}, {_Hour, _Minute, _Second}}=Val, binary) ->
+encode({{_Year, _Month, _Day}, {_Hour, _Minute, _Second}} = Val, binary) ->
     list_to_binary(encode(Val, list));
 encode({Time1, Time2, Time3}, list) ->
     Res = two_digits([Time1, Time2, Time3]),
     lists:flatten(Res);
-encode({_Time1, _Time2, _Time3}=Val, binary) ->
+encode({_Time1, _Time2, _Time3} = Val, binary) ->
     list_to_binary(encode(Val, list));
 encode(Val, _) ->
     {error, {unrecognized_value, Val}}.
-    
+
 %% @private
 two_digits(Nums) when is_list(Nums) ->
     [two_digits(Num) || Num <- Nums];
@@ -491,7 +491,7 @@ quote_loop([13 | Rest], Acc) ->
     quote_loop(Rest, [$r, $\\ | Acc]);
 
 quote_loop([$\\ | Rest], Acc) ->
-    quote_loop(Rest, [$\\ , $\\ | Acc]);
+    quote_loop(Rest, [$\\, $\\ | Acc]);
 
 quote_loop([39 | Rest], Acc) -> %% 39 is $'
     quote_loop(Rest, [39, $\\ | Acc]); %% 39 is $'

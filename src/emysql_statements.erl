@@ -32,7 +32,7 @@
 
 -include("emysql.hrl").
 
--record(state, {statements=gb_trees:empty(), prepared=gb_trees:empty()}).
+-record(state, {statements = gb_trees:empty(), prepared = gb_trees:empty()}).
 
 %%====================================================================
 %% API
@@ -105,7 +105,7 @@ handle_call({add, StmtName, Statement}, _From, State) ->
                 State;
             {Version, _} ->
                 State#state{
-                    statements = gb_trees:enter(StmtName, {Version+1, Statement}, State#state.statements)
+                    statements = gb_trees:enter(StmtName, {Version + 1, Statement}, State#state.statements)
                 }
         end,
     {reply, ok, State1};
@@ -127,7 +127,7 @@ handle_call({prepare, ConnId, StmtName, Version}, _From, State) ->
                 gb_trees:enter(StmtName, Version, Versions1)
         end,
     Prepared = gb_trees:enter(ConnId, Versions, State#state.prepared),
-    {reply, ok, State#state{prepared=Prepared}};
+    {reply, ok, State#state{prepared = Prepared}};
 
 handle_call({remove, ConnId}, _From, State) ->
     StmtNames =
@@ -136,7 +136,7 @@ handle_call({remove, ConnId}, _From, State) ->
             Versions -> gb_trees:keys(Versions)
         end,
     Prepared = gb_trees:delete_any(ConnId, State#state.prepared),
-    {reply, StmtNames, State#state{prepared=Prepared}};
+    {reply, StmtNames, State#state{prepared = Prepared}};
 
 handle_call(_, _From, State) -> {reply, {error, invalid_call}, State}.
 

@@ -29,19 +29,19 @@
 
 %% Query data
 -export([
-	affected_rows/1,
-	field_names/1,
-	insert_id/1,
-	result_type/1
+    affected_rows/1,
+    field_names/1,
+    insert_id/1,
+    result_type/1
 ]).
 
 %% Conversion routines
 -export([
-         as_dict/1,
-         as_json/1,
-         as_proplist/1,
-         as_record/3,
-         as_record/4
+    as_dict/1,
+    as_json/1,
+    as_proplist/1,
+    as_record/3,
+    as_record/4
 ]).
 
 affected_rows(P) -> emysql:affected_rows(P).
