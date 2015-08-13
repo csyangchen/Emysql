@@ -8,3 +8,9 @@
 
 -define(is_timeout(Timeout), (is_integer(Timeout) andalso Timeout > 0 orelse Timeout =:= infinity)).
 -define(is_query(Query), (is_list(Query) orelse is_binary(Query))).
+
+-ifdef(DEBUG).
+-define(DEBUG(Str, Args), io:format(Str, Args)).
+-else.
+-define(DEBUG(Str, Args), ok).
+-endif.

@@ -162,7 +162,7 @@ open_n_connections(PoolId, N) ->
 %% Does not remove pool from emysql_conn_mgr due to a possible deadlock.
 %% Caller must do it by itself.
 open_connections(Pool) ->
-    %-% io:format("open connections loop: .. "),
+    ?DEBUG("open connections loop: .. ", []),
     case (queue:len(Pool#pool.available) + gb_trees:size(Pool#pool.locked)) < Pool#pool.size of
         true ->
             case catch open_connection(Pool) of
@@ -183,8 +183,8 @@ open_connections(Pool) ->
 open_connection(#pool{pool_id = PoolId, host = Host, port = Port, user = User,
     password = Password, database = Database, encoding = Encoding,
     start_cmds = StartCmds, connect_timeout = ConnectTimeout} = Pool) ->
-    %-% io:format("~p open connection for pool ~p host ~p port ~p user ~p base ~p~n", [self(), PoolId, Host, Port, User, Database]),
-    %-% io:format("~p open connection: ... connect ... ~n", [self()]),
+    ?DEBUG("~p open connection for pool ~p host ~p port ~p user ~p base ~p~n", [self(), PoolId, Host, Port, User, Database]),
+    ?DEBUG("~p open connection: ... connect ... ~n", [self()]),
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}, {recbuf, ?TCP_RECV_BUFFER}], ConnectTimeout) of
         {ok, Sock} ->
             #greeting{
@@ -206,15 +206,15 @@ open_connection(#pool{pool_id = PoolId, host = Host, port = Port, user = User,
                 last_test_time = now_seconds(),
                 warnings = Pool#pool.warnings
             },
-            %%-% io:format("~p open connection: ... set db ...~n", [self()]),
+            %?DEBUG("~p open connection: ... set db ...~n", [self()]),
             ok = set_database_or_die(Connection, Database),
             ok = set_encoding_or_die(Connection, Encoding),
             ok = run_startcmds_or_die(Connection, StartCmds),
             ok = give_manager_control(Sock),
             Connection;
         {error, Reason} ->
-            %-% io:format("~p open connection: ... ERROR ~p~n", [self(), Reason]),
-            %-% io:format("~p open connection: ... exit with failed_to_connect_to_database~n", [self()]),
+            ?DEBUG("~p open connection: ... ERROR ~p~n", [self(), Reason]),
+            ?DEBUG("~p open connection: ... exit with failed_to_connect_to_database~n", [self()]),
             exit({failed_to_connect_to_database, Reason})
     end.
 
@@ -276,7 +276,7 @@ reset_connection(Pools, Conn, StayLocked) ->
     %% we queue the old as available for the next try
     %% by the next caller process coming along. So the
     %% pool can't run dry, even though it can freeze.
-    %-% io:format("resetting connection~n"),
+    ?DEBUG("resetting connection~n", []),
     MonitorRef = Conn#emysql_connection.monitor_ref,
     close_connection(Conn),
     %% OPEN NEW SOCKET

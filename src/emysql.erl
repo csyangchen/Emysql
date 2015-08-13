@@ -471,9 +471,9 @@ execute(PoolId, T, Timeout) when ?is_timeout(Timeout) ->
      Result :: #ok_packet{} | #result_packet{} | #eof_packet{} | #error_packet{}.
 %% @doc Execute a query, prepared statement or a stored procedure.
 execute(PoolId, T, Args, Timeout) ->
-    %-% io:format("~p execute getting connection for pool id ~p~n",[self(), PoolId]),
+    ?DEBUG("~p execute getting connection for pool id ~p~n",[self(), PoolId]),
     Connection = emysql_conn_mgr:wait_for_connection(PoolId),
-    %-% io:format("~p execute got connection for pool id ~p: ~p~n",[self(), PoolId, Connection#emysql_connection.id]),
+    ?DEBUG("~p execute got connection for pool id ~p: ~p~n",[self(), PoolId, Connection#emysql_connection.id]),
     monitor_work(Connection, Timeout, [Connection, T, Args]).
 
 %% @doc Same as execute/4, but return the atom 'unavailable' when no connection in the pool is readily available.

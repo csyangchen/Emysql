@@ -40,6 +40,7 @@
     find_pool/2, give_manager_control/1]).
 
 -include("emysql.hrl").
+-include("emysql_internal.hrl").
 
 -record(state, {pools, lockers = dict:new() :: dict:dict()}).
 
@@ -80,10 +81,10 @@ wait_for_connection(PoolId) ->
 wait_for_connection(PoolId, Timeout) ->
     %% try to lock a connection. if no connections are available then
     %% wait to be notified of the next available connection
-    %-% io:format("~p waits for connection to pool ~p~n", [self(), PoolId]),
+    ?DEBUG("~p waits for connection to pool ~p~n", [self(), PoolId]),
     case do_gen_call({lock_connection, PoolId, true, self()}) of
         unavailable ->
-            %-% io:format("~p is queued~n", [self()]),
+            ?DEBUG("~p is queued~n", [self()]),
             receive
                 {connection, Connection} -> Connection
             after Timeout ->
@@ -95,7 +96,7 @@ wait_for_connection(PoolId, Timeout) ->
                 end
             end;
         Connection ->
-            %-% io:format("~p gets connection~n", [self()]),
+            ?DEBUG("~p gets connection~n", [self()]),
             Connection
     end.
 
