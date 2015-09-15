@@ -46,6 +46,18 @@
     as_record/4
 ]).
 
+
+-export([
+    name_sup_pool/1,
+    name_statements/1
+]).
+
+name_sup_pool(PoolId) ->
+    list_to_atom(atom_to_list(PoolId) ++ "_sup").
+
+name_statements(PoolId) ->
+    list_to_atom(atom_to_list(PoolId) ++ "_statements").
+
 affected_rows(P) -> emysql:affected_rows(P).
 field_names(R) -> emysql:field_names(R).
 insert_id(P) -> emysql:insert_id(P).

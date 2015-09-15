@@ -7,7 +7,11 @@
     {vsn, "0.4.1"},
     {modules, []},
     {mod, {emysql_app, ["%MAKETIME%"]}},
-    {registered, [emysql_conn_mgr, emysql_sup]},
+    {registered, [
+        emysql_sup,
+        emysql_pool_sup,
+        emysql_statements
+    ]},
     {applications, [kernel, stdlib, crypto]},
     {env, [
         {default_timeout, 5000},

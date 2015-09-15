@@ -10,7 +10,7 @@
 -define(is_query(Query), (is_list(Query) orelse is_binary(Query))).
 
 -ifdef(DEBUG).
--define(DEBUG(Str, Args), io:format(Str, Args)).
+-define(DEBUG(Str, Args), io:format("~p ~p ~p " ++ Str ++ "\n", [self(), ?MODULE, ?LINE | Args])).
 -else.
 -define(DEBUG(Str, Args), ok).
 -endif.
