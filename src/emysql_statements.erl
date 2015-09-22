@@ -33,7 +33,10 @@
 
 -include("emysql.hrl").
 
--record(state, {statements = gb_trees:empty(), prepared = gb_trees:empty()}).
+-record(state, {
+    statements = gb_trees:empty(),
+    prepared = gb_trees:empty()
+}).
 
 %%====================================================================
 %% API

@@ -40,9 +40,7 @@ start(_Type, _StartArgs) ->
     emysql_sup:start_link().
 
 stop(_State) ->
-    ok = lists:foreach(
-        fun(Pool) -> emysql:remove_pool(Pool#pool.pool_id) end,
-        emysql_conn_mgr:pools()).
+    ok.
 
 default_timeout() ->
     case application:get_env(emysql, default_timeout) of

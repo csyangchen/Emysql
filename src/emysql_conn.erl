@@ -28,9 +28,9 @@
 -module(emysql_conn).
 -export([set_database/2, set_encoding/2,
     execute/3, prepare/3, unprepare/2,
-    open_connections/1, open_connection/1,
-    reset_connection/3, close_connection/1,
-    open_n_connections/2, hstate/1,
+    open_connection/1,
+    reset_connection/2, close_connection/1,
+    hstate/1,
     test_connection/2, need_test_connection/1
 ]).
 
@@ -77,7 +77,7 @@ set_database(Connection, Database) ->
 set_encoding(_, undefined) -> ok;
 set_encoding(Connection, {Encoding, Collation}) ->
     Packet = [?COM_QUERY, "SET NAMES '", erlang:atom_to_binary(Encoding, utf8),
-    "' COLLATE '", erlang:atom_to_binary(Collation, utf8), "'"],
+        "' COLLATE '", erlang:atom_to_binary(Collation, utf8), "'"],
     emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0);
 set_encoding(Connection, Encoding) ->
     Packet = [?COM_QUERY, "SET NAMES '", erlang:atom_to_binary(Encoding, utf8), "'"],
@@ -138,53 +138,10 @@ unprepare(Connection, Name) ->
     Packet = [?COM_QUERY, "DEALLOCATE PREPARE ", Name],  % todo: utf8?
     send_recv(Connection, Packet).
 
-open_n_connections(PoolId, N) ->
-    case emysql_conn_mgr:find_pool(PoolId, emysql_conn_mgr:pools()) of
-        {Pool, _} ->
-            lists:foldl(fun(_, {Conns, Reasons}) ->
-                %% Catch {'EXIT',_} errors so newly opened connections are not orphaned.
-                %% We do not want to close all the connections here like in
-                %% open_connections/2. Struggle to keep working.
-                case catch open_connection(Pool) of
-                    #emysql_connection{} = Connection ->
-                        {[Connection | Conns], Reasons};
-                    {'EXIT', Reason} ->
-                        {Conns, [Reason | Reasons]}
-                end
-            end, {[], []}, lists:seq(1, N));
-        _ ->
-            exit(pool_not_found)
-    end.
-
-%% @doc Opens connections for the necessary pool.
-%%
-%% If connection opening fails, removes all connections from the pool
-%% Does not remove pool from emysql_conn_mgr due to a possible deadlock.
-%% Caller must do it by itself.
-open_connections(Pool) ->
-    %-% io:format("open connections loop: .. "),
-    case (queue:len(Pool#pool.available) + gb_trees:size(Pool#pool.locked)) < Pool#pool.size of
-        true ->
-            case catch open_connection(Pool) of
-                #emysql_connection{} = Conn ->
-                    open_connections(Pool#pool{available = queue:in(Conn, Pool#pool.available)});
-                {'EXIT', Reason} ->
-                    AllConns = lists:append(
-                        queue:to_list(Pool#pool.available),
-                        gb_trees:values(Pool#pool.locked)
-                    ),
-                    lists:foreach(fun emysql_conn:close_connection/1, AllConns),
-                    {error, Reason}
-            end;
-        false ->
-            {ok, Pool}
-    end.
-
 open_connection(#pool{pool_id = PoolId, host = Host, port = Port, user = User,
     password = Password, database = Database, encoding = Encoding,
     start_cmds = StartCmds, connect_timeout = ConnectTimeout} = Pool) ->
-    %-% io:format("~p open connection for pool ~p host ~p port ~p user ~p base ~p~n", [self(), PoolId, Host, Port, User, Database]),
-    %-% io:format("~p open connection: ... connect ... ~n", [self()]),
+    ?DEBUG("~p open connection for pool ~p host ~p port ~p user ~p base ~p~n", [self(), PoolId, Host, Port, User, Database]),
     case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}, {recbuf, ?TCP_RECV_BUFFER}], ConnectTimeout) of
         {ok, Sock} ->
             #greeting{
@@ -194,27 +151,24 @@ open_connection(#pool{pool_id = PoolId, host = Host, port = Port, user = User,
                 language = Language
             } = handshake(Sock, User, Password),
             Connection = #emysql_connection{
-                id = erlang:port_to_list(Sock),
-                pool_id = PoolId,
-                encoding = Encoding,
+                id = erlang:port_to_list(Sock), %% TODO
+                pool = Pool,
                 socket = Sock,
                 version = Version,
                 thread_id = ThreadId,
                 caps = Caps,
                 language = Language,
                 test_period = Pool#pool.conn_test_period,
-                last_test_time = now_seconds(),
-                warnings = Pool#pool.warnings
+                last_test_time = now_seconds()
             },
-            %%-% io:format("~p open connection: ... set db ...~n", [self()]),
+            ?DEBUG("~p open connection: ... set db ...~n", [self()]),
             ok = set_database_or_die(Connection, Database),
             ok = set_encoding_or_die(Connection, Encoding),
             ok = run_startcmds_or_die(Connection, StartCmds),
-            ok = give_manager_control(Sock),
+            ok = give_manager_control(PoolId, Sock),
             Connection;
         {error, Reason} ->
-            %-% io:format("~p open connection: ... ERROR ~p~n", [self(), Reason]),
-            %-% io:format("~p open connection: ... exit with failed_to_connect_to_database~n", [self()]),
+            ?DEBUG("~p open connection: ... ERROR ~p~n", [self(), Reason]),
             exit({failed_to_connect_to_database, Reason})
     end.
 
@@ -226,8 +180,8 @@ handshake(Sock, User, Password) ->
             exit(Reason)
     end.
 
-give_manager_control(Socket) ->
-    case emysql_conn_mgr:give_manager_control(Socket) of
+give_manager_control(PoolId, Socket) ->
+    case emysql_pool:give_manager_control(PoolId, Socket) of
         {error, Reason} ->
             gen_tcp:close(Socket),
             exit({Reason,
@@ -268,7 +222,7 @@ set_encoding_or_die(#emysql_connection{socket = Socket} = Connection, Encoding) 
             exit({failed_to_set_encoding, Err2#error_packet.msg})
     end.
 
-reset_connection(Pools, Conn, StayLocked) ->
+reset_connection(Conn, StayLocked) ->
     %% if a process dies or times out while doing work
     %% the socket must be closed and the connection reset
     %% in the conn_mgr state. Also a new connection needs
@@ -276,28 +230,23 @@ reset_connection(Pools, Conn, StayLocked) ->
     %% we queue the old as available for the next try
     %% by the next caller process coming along. So the
     %% pool can't run dry, even though it can freeze.
-    %-% io:format("resetting connection~n"),
+    ?DEBUG("resetting connection~n", []),
     MonitorRef = Conn#emysql_connection.monitor_ref,
     close_connection(Conn),
     %% OPEN NEW SOCKET
-    case emysql_conn_mgr:find_pool(Conn#emysql_connection.pool_id, Pools) of
-        {Pool, _} ->
-            case catch open_connection(Pool) of
-                #emysql_connection{} = NewConn when StayLocked == pass ->
-                    NewConn2 = add_monitor_ref(NewConn, MonitorRef),
-                    ok = emysql_conn_mgr:replace_connection_as_available(Conn, NewConn2),
-                    NewConn2;
-                #emysql_connection{} = NewConn when StayLocked == keep ->
-                    NewConn2 = add_monitor_ref(NewConn, MonitorRef),
-                    ok = emysql_conn_mgr:replace_connection_as_locked(Conn, NewConn2),
-                    NewConn2;
-                {'EXIT', Reason} ->
-                    DeadConn = Conn#emysql_connection{alive = false, last_test_time = 0},
-                    emysql_conn_mgr:replace_connection_as_available(Conn, DeadConn),
-                    {error, {cannot_reopen_in_reset, Reason}}
-            end;
-        undefined ->
-            exit(pool_not_found)
+    case catch open_connection(Conn#emysql_connection.pool) of
+        #emysql_connection{} = NewConn when StayLocked == pass ->
+            NewConn2 = add_monitor_ref(NewConn, MonitorRef),
+            ok = emysql_pool:replace_connection_as_available(Conn, NewConn2),
+            NewConn2;
+        #emysql_connection{} = NewConn when StayLocked == keep ->
+            NewConn2 = add_monitor_ref(NewConn, MonitorRef),
+            ok = emysql_pool:replace_connection_as_locked(Conn, NewConn2),
+            NewConn2;
+        {'EXIT', Reason} ->
+            DeadConn = Conn#emysql_connection{alive = false, last_test_time = 0},
+            emysql_pool:replace_connection_as_available(Conn, DeadConn),
+            {error, {cannot_reopen_in_reset, Reason}}
     end.
 
 add_monitor_ref(Conn, MonitorRef) ->
@@ -311,7 +260,7 @@ close_connection(Conn) ->
 test_connection(Conn, StayLocked) ->
     case catch emysql_tcp:send_and_recv_packet(Conn#emysql_connection.socket, <<?COM_PING>>, 0) of
         {'EXIT', _} ->
-            case reset_connection(emysql_conn_mgr:pools(), Conn, StayLocked) of
+            case reset_connection(Conn, StayLocked) of
                 NewConn when is_record(NewConn, emysql_connection) ->
                     NewConn;
                 {error, FailedReset} ->
@@ -320,8 +269,8 @@ test_connection(Conn, StayLocked) ->
         _ ->
             NewConn = Conn#emysql_connection{last_test_time = now_seconds()},
             case StayLocked of
-                pass -> emysql_conn_mgr:replace_connection_as_available(Conn, NewConn);
-                keep -> emysql_conn_mgr:replace_connection_as_locked(Conn, NewConn)
+                pass -> emysql_pool:replace_connection_as_available(Conn, NewConn);
+                keep -> emysql_pool:replace_connection_as_locked(Conn, NewConn)
             end,
             NewConn
     end.
@@ -340,7 +289,7 @@ now_seconds() ->
 %%--------------------------------------------------------------------
 
 %% @doc A wrapper for emysql_tcp:send_and_recv_packet/3 that may log warnings if any.
-send_recv(#emysql_connection{socket = Socket, warnings = Warnings}, Packet) ->
+send_recv(#emysql_connection{socket = Socket, pool = #pool{warnings = Warnings}}, Packet) ->
     Ret = emysql_tcp:send_and_recv_packet(Socket, Packet, 0),
     Warnings andalso log_warnings(Socket, Ret),
     Ret.
